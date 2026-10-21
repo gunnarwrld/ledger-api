@@ -1,0 +1,287 @@
+openapi: 3.1.0
+info:
+  title: Ledger Forge API
+  version: 1.0.0
+  description: Double-entry wallet ledger with append-only journal postings.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/accounts:
+    post:
+      operationId: createAccount
+      summary: Create a wallet and optionally post its opening balance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+            example:
+              name: Gunnar savings
+              currencyCode: SEK
+              openingBalanceMinor: 250000
+      responses:
+        '201':
+          description: Account created
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/v1/accounts/{id}:
+    get:
+      operationId: getAccount
+      summary: Read an account
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/accounts/{id}/balance:
+    get:
+      operationId: getBalance
+      summary: Read the current materialized balance
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Balance in integer minor units
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Balance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/accounts/{id}/statement:
+    get:
+      operationId: getStatement
+      summary: Read the latest 500 immutable postings for an account
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: Statement lines in posting order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatementLine'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/transfers:
+    post:
+      operationId: createTransfer
+      summary: Transfer funds between two wallets
+      description: Requires a stable Idempotency-Key for safe retries. Each successful transfer appends one balanced journal entry.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+            example:
+              sourceAccountId: 035201c6-48b3-48ec-9488-2689940ad318
+              destinationAccountId: 86983f6a-d83a-4b55-96e1-6df077ad4fc7
+              amountMinor: 1250
+              currencyCode: SEK
+      responses:
+        '201':
+          description: Transfer accepted, or the original receipt replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Idempotency key was used for a different request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Insufficient funds or balance limit exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  parameters:
+    AccountId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Account not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    CreateAccountRequest:
+      type: object
+      required: [name, currencyCode]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+        openingBalanceMinor:
+          type: integer
+          format: int64
+          minimum: 0
+          default: 0
+    TransferRequest:
+      type: object
+      required: [sourceAccountId, destinationAccountId, amountMinor, currencyCode]
+      properties:
+        sourceAccountId:
+          type: string
+          format: uuid
+        destinationAccountId:
+          type: string
+          format: uuid
+        amountMinor:
+          type: integer
+          format: int64
+          minimum: 1
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+    Account:
+      type: object
+      required: [id, name, currencyCode, kind, balanceMinor, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+        kind:
+          type: string
+          enum: [CUSTOMER_WALLET, CASH_ASSET]
+        balanceMinor:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+    Balance:
+      type: object
+      required: [accountId, currencyCode, balanceMinor]
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+        balanceMinor:
+          type: integer
+          format: int64
+          minimum: 0
+    Transfer:
+      type: object
+      required: [transferId, journalEntryId, sourceAccountId, destinationAccountId, amountMinor, currencyCode, createdAt]
+      properties:
+        transferId:
+          type: string
+          format: uuid
+        journalEntryId:
+          type: string
+          format: uuid
+        sourceAccountId:
+          type: string
+          format: uuid
+        destinationAccountId:
+          type: string
+          format: uuid
+        amountMinor:
+          type: integer
+          format: int64
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+        createdAt:
+          type: string
+          format: date-time
+    StatementLine:
+      type: object
+      required: [journalEntryId, entryType, postedAt, side, amountMinor, signedAmountMinor, currencyCode]
+      properties:
+        journalEntryId:
+          type: string
+          format: uuid
+        entryType:
+          type: string
+          enum: [OPENING_BALANCE, TRANSFER]
+        referenceId:
+          type: [string, 'null']
+          format: uuid
+        postedAt:
+          type: string
+          format: date-time
+        side:
+          type: string
+          enum: [DEBIT, CREDIT]
+        amountMinor:
+          type: integer
+          format: int64
+          minimum: 1
+        signedAmountMinor:
+          type: integer
+          format: int64
+        currencyCode:
+          $ref: '#/components/schemas/CurrencyCode'
+    CurrencyCode:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      description: Uppercase ISO 4217 currency code.
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
