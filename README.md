@@ -95,17 +95,3 @@ Run the complete test suite:
 ```
 
 Tests use H2 in PostgreSQL compatibility mode, so they do not need a running Docker daemon. Last full run: `BUILD SUCCESSFUL` — **8 tests, 0 failures, 0 errors, 0 skipped**. The suite includes journal invariant unit tests, an HTTP idempotency/replay check, a key-reuse conflict check, and a 24-worker concurrency test that verifies the source cannot overdraw and that debits, credits, and customer/cash control balances reconcile.
-
-## Publish under `@gunnarwrld`
-
-After reviewing the project, these commands create the public repository and push the first commit. They are provided for you to run; this project has not been pushed or published.
-
-```bash
-cd "/Users/gunnarwrld/Library/Application Support/Clicky/projects/agents/ledger-forge/output/ledger-api"
-git init
-git add .
-git commit -m "Build double-entry ledger API"
-gh repo create gunnarwrld/ledger-api --public --source=. --remote=origin --push
-```
-
-Make sure `gh auth status` succeeds first.
