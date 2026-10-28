@@ -17,27 +17,20 @@ class Account(
     @Id
     @Column(nullable = false, updatable = false)
     var id: UUID = UUID.randomUUID(),
-
     @Column(nullable = false, length = 120)
     var name: String = "",
-
     @Column(name = "currency_code", nullable = false, length = 3, updatable = false)
     var currencyCode: String = "USD",
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24, updatable = false)
     var kind: AccountKind = AccountKind.CUSTOMER_WALLET,
-
     @Column(name = "balance_minor", nullable = false)
     var balanceMinor: Long = 0,
-
     @Column(name = "system_key", unique = true, length = 80, updatable = false)
     var systemKey: String? = null,
-
     @Version
     @Column(nullable = false)
     var version: Long = 0,
-
     @Column(name = "created_at", nullable = false, updatable = false)
     var createdAt: Instant = Instant.now().truncatedTo(ChronoUnit.MICROS),
 )
