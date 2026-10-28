@@ -40,14 +40,15 @@ data class AccountResponse(
     val createdAt: Instant,
 ) {
     companion object {
-        fun from(account: Account) = AccountResponse(
-            id = account.id,
-            name = account.name,
-            currencyCode = account.currencyCode,
-            kind = account.kind,
-            balanceMinor = account.balanceMinor,
-            createdAt = account.createdAt,
-        )
+        fun from(account: Account) =
+            AccountResponse(
+                id = account.id,
+                name = account.name,
+                currencyCode = account.currencyCode,
+                kind = account.kind,
+                balanceMinor = account.balanceMinor,
+                createdAt = account.createdAt,
+            )
     }
 }
 
@@ -79,8 +80,9 @@ data class StatementLineResponse(
 ) {
     companion object {
         fun from(posting: Posting): StatementLineResponse {
-            val positive = (posting.account.kind == AccountKind.CASH_ASSET && posting.side == PostingSide.DEBIT) ||
-                (posting.account.kind == AccountKind.CUSTOMER_WALLET && posting.side == PostingSide.CREDIT)
+            val positive =
+                (posting.account.kind == AccountKind.CASH_ASSET && posting.side == PostingSide.DEBIT) ||
+                    (posting.account.kind == AccountKind.CUSTOMER_WALLET && posting.side == PostingSide.CREDIT)
             return StatementLineResponse(
                 journalEntryId = posting.journalEntry.id,
                 entryType = posting.journalEntry.entryType,
