@@ -19,6 +19,7 @@ import dev.ledgerforge.ledger.persistence.AccountRepository
 import dev.ledgerforge.ledger.persistence.JournalEntryRepository
 import dev.ledgerforge.ledger.persistence.PostingRepository
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.TransientDataAccessException
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -32,15 +33,24 @@ class AccountService(
     private val accounts: AccountRepository,
     private val postings: PostingRepository,
 ) {
-    fun create(request: CreateAccountRequest): AccountResponse = try {
-        creation.create(request)
-    } catch (exception: SystemCashAccountCreationRaceException) {
-        val key = "CASH:${requireIsoCurrency(request.currencyCode)}"
-        if (accounts.findBySystemKey(key) == null) {
-            throw exception.cause as? DataIntegrityViolationException ?: exception
+    fun create(request: CreateAccountRequest): AccountResponse {
+        var last: RuntimeException? = null
+        repeat(TRANSIENT_ATTEMPTS) { attempt ->
+            try {
+                return creation.create(request)
+            } catch (exception: SystemCashAccountCreationRaceException) {
+                last = exception
+                val key = "CASH:${requireIsoCurrency(request.currencyCode)}"
+                val winnerVisible = accounts.findBySystemKey(key) != null
+                if (!winnerVisible && attempt == TRANSIENT_ATTEMPTS - 1) {
+                    throw exception.cause as? DataIntegrityViolationException ?: exception
+                }
+            } catch (exception: TransientDataAccessException) {
+                last = exception
+                if (attempt == TRANSIENT_ATTEMPTS - 1) throw exception
+            }
         }
-        // The transaction that won first-use creation has committed; retry this whole account transaction.
-        creation.create(request)
+        throw last ?: IllegalStateException("account creation failed")
     }
 
     @Transactional(readOnly = true)
@@ -56,18 +66,19 @@ class AccountService(
     fun statement(id: UUID): List<StatementLineResponse> {
         requireAccount(id)
         val page = PageRequest.of(0, 500)
-        return postings.findRecentForAccount(id, page)
+        return postings
+            .findRecentForAccount(id, page)
             .asReversed()
             .map(StatementLineResponse::from)
     }
 
-    private fun requireAccount(id: UUID): Account =
-        accounts.findById(id).orElseThrow { AccountNotFoundException(id) }
+    private fun requireAccount(id: UUID): Account = accounts.findById(id).orElseThrow { AccountNotFoundException(id) }
 }
 
 @Service
 class AccountCreationTransaction(
     private val accounts: AccountRepository,
+    private val locks: AccountLocks,
     private val journalEntries: JournalEntryRepository,
     private val postings: PostingRepository,
 ) {
@@ -75,16 +86,17 @@ class AccountCreationTransaction(
     fun create(request: CreateAccountRequest): AccountResponse {
         val currency = requireIsoCurrency(request.currencyCode)
         require(request.openingBalanceMinor >= 0) { "Opening balance cannot be negative" }
-        val customer = accounts.saveAndFlush(
-            Account(
-                name = request.name.trim(),
-                currencyCode = currency,
-                kind = AccountKind.CUSTOMER_WALLET,
-            ),
-        )
+        val customer =
+            accounts.saveAndFlush(
+                Account(
+                    name = request.name.trim(),
+                    currencyCode = currency,
+                    kind = AccountKind.CUSTOMER_WALLET,
+                ),
+            )
         if (request.openingBalanceMinor > 0) {
             val cash = getOrCreateCashAccount(currency)
-            val locked = lockAccounts(listOf(customer.id, cash.id))
+            val locked = locks.lockInOrder(listOf(customer.id, cash.id))
             val customerAccount = locked.getValue(customer.id)
             val cashAccount = locked.getValue(cash.id)
             cashAccount.balanceMinor = addExact(cashAccount.balanceMinor, request.openingBalanceMinor)
@@ -92,24 +104,28 @@ class AccountCreationTransaction(
             accounts.saveAll(listOf(cashAccount, customerAccount))
 
             val now = Instant.now().truncatedTo(ChronoUnit.MICROS)
-            val entry = journalEntries.save(
-                JournalEntry(entryType = EntryType.OPENING_BALANCE, createdAt = now),
-            )
-            val draft = listOf(
-                PostingDraft(cashAccount.id, PostingSide.DEBIT, request.openingBalanceMinor, currency),
-                PostingDraft(customerAccount.id, PostingSide.CREDIT, request.openingBalanceMinor, currency),
-            )
-            JournalEntryRules.validate(draft)
-            postings.saveAll(draft.map { posting ->
-                Posting(
-                    journalEntry = entry,
-                    account = locked.getValue(posting.accountId),
-                    side = posting.side,
-                    amountMinor = posting.amountMinor,
-                    currencyCode = posting.currencyCode,
-                    createdAt = now,
+            val entry =
+                journalEntries.save(
+                    JournalEntry(entryType = EntryType.OPENING_BALANCE, createdAt = now),
                 )
-            })
+            val draft =
+                listOf(
+                    PostingDraft(cashAccount.id, PostingSide.DEBIT, request.openingBalanceMinor, currency),
+                    PostingDraft(customerAccount.id, PostingSide.CREDIT, request.openingBalanceMinor, currency),
+                )
+            JournalEntryRules.validate(draft)
+            postings.saveAll(
+                draft.map { posting ->
+                    Posting(
+                        journalEntry = entry,
+                        account = locked.getValue(posting.accountId),
+                        side = posting.side,
+                        amountMinor = posting.amountMinor,
+                        currencyCode = posting.currencyCode,
+                        createdAt = now,
+                    )
+                },
+            )
         }
         return AccountResponse.from(customer)
     }
@@ -132,13 +148,13 @@ class AccountCreationTransaction(
         }
     }
 
-    private fun lockAccounts(ids: List<UUID>): Map<UUID, Account> = ids.distinct()
-        .sortedBy(UUID::toString)
-        .associateWith { id -> accounts.findLockedById(id) ?: throw AccountNotFoundException(id) }
-
-    private fun addExact(balance: Long, amount: Long): Long = try {
-        Math.addExact(balance, amount)
-    } catch (_: ArithmeticException) {
-        throw BalanceLimitExceededException()
-    }
+    private fun addExact(
+        balance: Long,
+        amount: Long,
+    ): Long =
+        try {
+            Math.addExact(balance, amount)
+        } catch (_: ArithmeticException) {
+            throw BalanceLimitExceededException()
+        }
 }
