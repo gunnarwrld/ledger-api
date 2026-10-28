@@ -26,25 +26,33 @@ class LedgerController(
     private val transferService: TransferService,
 ) {
     @PostMapping("/accounts")
-    fun createAccount(@Valid @RequestBody request: CreateAccountRequest): ResponseEntity<AccountResponse> {
+    fun createAccount(
+        @Valid @RequestBody request: CreateAccountRequest,
+    ): ResponseEntity<AccountResponse> {
         val account = accountService.create(request)
         return ResponseEntity.created(URI.create("/api/v1/accounts/${account.id}")).body(account)
     }
 
     @GetMapping("/accounts/{id}")
-    fun getAccount(@PathVariable id: UUID): AccountResponse = accountService.get(id)
+    fun getAccount(
+        @PathVariable id: UUID,
+    ): AccountResponse = accountService.get(id)
 
     @GetMapping("/accounts/{id}/balance")
-    fun getBalance(@PathVariable id: UUID): BalanceResponse = accountService.balance(id)
+    fun getBalance(
+        @PathVariable id: UUID,
+    ): BalanceResponse = accountService.balance(id)
 
     @GetMapping("/accounts/{id}/statement")
-    fun getStatement(@PathVariable id: UUID): List<StatementLineResponse> = accountService.statement(id)
+    fun getStatement(
+        @PathVariable id: UUID,
+    ): List<StatementLineResponse> = accountService.statement(id)
 
     @PostMapping("/transfers")
     fun transfer(
         @RequestHeader("Idempotency-Key")
-        @NotBlank @Size(max = 128) idempotencyKey: String,
+        @NotBlank
+        @Size(max = 128) idempotencyKey: String,
         @Valid @RequestBody request: TransferRequest,
-    ): ResponseEntity<TransferResponse> =
-        ResponseEntity.status(HttpStatus.CREATED).body(transferService.transfer(idempotencyKey, request))
+    ): ResponseEntity<TransferResponse> = ResponseEntity.status(HttpStatus.CREATED).body(transferService.transfer(idempotencyKey, request))
 }

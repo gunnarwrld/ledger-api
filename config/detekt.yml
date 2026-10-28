@@ -1,0 +1,36 @@
+config:
+  validation: true
+
+complexity:
+  LongMethod:
+    allowedLines: 90
+  LongParameterList:
+    allowedConstructorParameters: 12
+    allowedFunctionParameters: 8
+    ignoreDefaultParameters: true
+  CyclomaticComplexMethod:
+    allowedComplexity: 18
+
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    maxLineLength: 140
+  ReturnCount:
+    max: 6
+  ThrowsCount:
+    max: 5
+  WildcardImport:
+    active: true
+
+exceptions:
+  SwallowedException:
+    ignoredExceptionTypes:
+      - ArithmeticException
+  TooGenericExceptionCaught:
+    active: false
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated:
+      - "org.junit.jupiter.api.Test"

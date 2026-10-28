@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Lint, test, and report coverage
+        run: ./gradlew check koverXmlReport koverHtmlReport --no-daemon
+
+      - name: Publish test and coverage summary
+        if: always()
+        run: python3 scripts/ci_summary.py
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-and-coverage-reports
+          if-no-files-found: ignore
+          path: |
+            build/reports/tests/test
+            build/reports/kover
+            build/test-results/test
+
+      - name: Build container image
+        run: docker build -t ledger-api:ci .
