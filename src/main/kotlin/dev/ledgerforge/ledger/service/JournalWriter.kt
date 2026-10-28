@@ -26,19 +26,22 @@ class JournalWriter(
         createdAt: Instant,
     ) {
         JournalEntryRules.validate(drafts)
-        val entry = entries.save(
-            JournalEntry(id = entryId, entryType = entryType, referenceId = referenceId, createdAt = createdAt),
-        )
-        postings.saveAll(drafts.map { draft ->
-            val account = accounts.getReferenceById(draft.accountId)
-            Posting(
-                journalEntry = entry,
-                account = account,
-                side = draft.side,
-                amountMinor = draft.amountMinor,
-                currencyCode = draft.currencyCode,
-                createdAt = createdAt,
+        val entry =
+            entries.save(
+                JournalEntry(id = entryId, entryType = entryType, referenceId = referenceId, createdAt = createdAt),
             )
-        })
+        postings.saveAll(
+            drafts.map { draft ->
+                val account = accounts.getReferenceById(draft.accountId)
+                Posting(
+                    journalEntry = entry,
+                    account = account,
+                    side = draft.side,
+                    amountMinor = draft.amountMinor,
+                    currencyCode = draft.currencyCode,
+                    createdAt = createdAt,
+                )
+            },
+        )
     }
 }
