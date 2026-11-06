@@ -153,3 +153,11 @@ python3 scripts/ci_summary.py --write
 ## Continuous integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pull requests and on pushes to `master`. It runs `./gradlew check` (ktlint, detekt, and the full test suite), publishes the JUnit and Kover reports as a workflow artifact and a job summary, checks that the coverage badge matches the report, and builds the application image.
+
+## Related projects
+
+- [Forge Wallet](https://github.com/gunnarwrld/forge-wallet-android) — an offline-first Android client that sends transfers to this API with idempotency keys.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
